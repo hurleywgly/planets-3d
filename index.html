@@ -68,6 +68,27 @@
             border-radius: 5px;
             font-size: 0.9em;
         }
+        
+        /* Media query for mobile devices */
+        @media (max-width: 768px) {
+            #controls-help {
+                padding: 15px;
+                font-size: 1.1em;
+                line-height: 1.5;
+                bottom: 10px;
+                right: 10px;
+                max-width: calc(100% - 20px);
+            }
+            
+            #controls-help p {
+                margin: 8px 0;
+            }
+            
+            #loading-bar {
+                width: 80%;
+                max-width: 300px;
+            }
+        }
     </style>
 </head>
 <body>

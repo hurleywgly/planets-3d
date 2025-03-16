@@ -398,7 +398,35 @@ infoPanel.style.display = 'none';
 infoPanel.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.5)';
 infoPanel.style.lineHeight = '1.5';
 infoPanel.style.fontSize = '14px';
+infoPanel.style.zIndex = '100'; // Ensure it's above other elements
 document.body.appendChild(infoPanel);
+
+// Make info panel responsive for mobile
+function updateInfoPanelForScreenSize() {
+    if (window.innerWidth < 768) { // Mobile breakpoint
+        infoPanel.style.left = '10px';
+        infoPanel.style.right = '10px';
+        infoPanel.style.bottom = '10px';
+        infoPanel.style.maxWidth = 'calc(100% - 20px)';
+        infoPanel.style.fontSize = '16px';
+        infoPanel.style.padding = '20px';
+        infoPanel.style.maxHeight = '80vh';
+        infoPanel.style.lineHeight = '1.6';
+    } else {
+        infoPanel.style.left = '20px';
+        infoPanel.style.right = 'auto';
+        infoPanel.style.bottom = '20px';
+        infoPanel.style.maxWidth = '350px';
+        infoPanel.style.fontSize = '14px';
+        infoPanel.style.padding = '20px';
+        infoPanel.style.maxHeight = '70vh';
+        infoPanel.style.lineHeight = '1.5';
+    }
+}
+
+// Call initially and on window resize
+updateInfoPanelForScreenSize();
+window.addEventListener('resize', updateInfoPanelForScreenSize);
 
 // Create a title panel
 const titlePanel = document.createElement('div');
@@ -440,13 +468,45 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.minDistance = 10;
 controls.maxDistance = 300;
+controls.rotateSpeed = 0.8; // Adjust rotation speed
+controls.zoomSpeed = 1.2;   // Adjust zoom speed
+controls.panSpeed = 0.8;    // Adjust pan speed
+controls.screenSpacePanning = true; // More intuitive panning
+controls.enableTouch = true; // Ensure touch is enabled
+
+// Adjust controls based on device
+function updateControlsForDevice() {
+    if (window.innerWidth < 768) { // Mobile
+        controls.rotateSpeed = 0.6; // Slower rotation for more precision on small screens
+        controls.zoomSpeed = 0.8;   // Slower zoom for more control
+    } else {
+        controls.rotateSpeed = 0.8;
+        controls.zoomSpeed = 1.2;
+    }
+}
+
+// Call initially and on resize
+updateControlsForDevice();
+window.addEventListener('resize', updateControlsForDevice);
 
 // Raycaster for clicking
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
-window.addEventListener('click', (event) => {
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+// Handle both mouse clicks and touch events
+function handleInteraction(event) {
+    // Prevent default behavior for touch events
+    if (event.preventDefault) {
+        event.preventDefault();
+    }
+    
+    // Get the position from either mouse click or touch
+    const position = event.touches ? event.touches[0] : event;
+    
+    // Calculate normalized device coordinates
+    mouse.x = (position.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(position.clientY / window.innerHeight) * 2 + 1;
+    
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObjects(scene.children, true);
     
@@ -459,15 +519,20 @@ window.addEventListener('click', (event) => {
         
         if (targetObject.name) {
             // Display info panel with detailed information
-            infoPanel.innerHTML = `<h3 style="margin-top: 0; color: #3498db;">${targetObject.name}</h3>`;
+            infoPanel.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2 style="margin: 0; color: #3498db; font-size: ${window.innerWidth < 768 ? '24px' : '20px'};">${targetObject.name}</h2>
+                    <button id="closeInfoPanel" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer; padding: 0 5px;">×</button>
+                </div>
+            `;
             
             // Use detailed info if available
             if (targetObject.userData && targetObject.userData.detailedInfo) {
                 // Replace newlines with HTML line breaks
                 const formattedInfo = targetObject.userData.detailedInfo.replace(/\n/g, '<br>');
-                infoPanel.innerHTML += `<p>${formattedInfo}</p>`;
+                infoPanel.innerHTML += `<p style="margin-bottom: 15px;">${formattedInfo}</p>`;
             } else if (targetObject.userData && targetObject.userData.info) {
-                infoPanel.innerHTML += `<p>${targetObject.userData.info}</p>`;
+                infoPanel.innerHTML += `<p style="margin-bottom: 15px;">${targetObject.userData.info}</p>`;
             }
             
             // Add more detailed information for planets
@@ -475,9 +540,9 @@ window.addEventListener('click', (event) => {
                 const planetData = planets.find(p => p.name === targetObject.name);
                 if (planetData) {
                     infoPanel.innerHTML += `
-                        <div style="background-color: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; margin-top: 10px;">
-                            <p><strong>Distance from Sun:</strong> ${planetData.distance} AU</p>
-                            <p style="margin-bottom: 0;"><strong>Orbital Period:</strong> ${(planetData.orbitalPeriod * 365).toFixed(1)} Earth days</p>
+                        <div style="background-color: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-top: 15px;">
+                            <p style="font-size: ${window.innerWidth < 768 ? '18px' : '14px'}; margin: 8px 0;"><strong>Distance from Sun:</strong> ${planetData.distance} AU</p>
+                            <p style="font-size: ${window.innerWidth < 768 ? '18px' : '14px'}; margin: 8px 0 0 0;"><strong>Orbital Period:</strong> ${(planetData.orbitalPeriod * 365).toFixed(1)} Earth days</p>
                         </div>
                     `;
                 }
@@ -498,6 +563,17 @@ window.addEventListener('click', (event) => {
             cameraTargetPosition = targetPosition;
             cameraTargetDistance = objectSize;
             isAnimatingCamera = true;
+
+            // Add event listener to close button
+            setTimeout(() => {
+                const closeButton = document.getElementById('closeInfoPanel');
+                if (closeButton) {
+                    closeButton.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        infoPanel.style.display = 'none';
+                    });
+                }
+            }, 0);
         }
     } else {
         // Hide info panel when clicking empty space
@@ -506,7 +582,11 @@ window.addEventListener('click', (event) => {
         // Reset camera animation
         isAnimatingCamera = false;
     }
-});
+}
+
+// Add event listeners for both mouse and touch
+window.addEventListener('click', handleInteraction);
+window.addEventListener('touchstart', handleInteraction);
 
 // Camera animation variables
 let isAnimatingCamera = false;
@@ -521,6 +601,7 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit to 2x for performance
 });
 
 // Animation loop
