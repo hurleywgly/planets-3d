@@ -1,0 +1,27 @@
+{
+  "name": "interactive-solar-system",
+  "version": "1.0.0",
+  "description": "An immersive, educational WebGL-powered visualization of our solar system built with Three.js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "solar-system",
+    "three.js",
+    "webgl",
+    "3d",
+    "astronomy",
+    "education"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  },
+  "engines": {
+    "node": ">=12.0.0"
+  }
+} 
