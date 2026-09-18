@@ -5,12 +5,11 @@ An immersive, educational WebGL-powered visualization of our solar system built 
 ## Features
 
 - **Realistic Planetary Visualization**: High-quality textures and scaled representations of the Sun, planets, and Earth's Moon
-- **Interactive Controls**: Intuitive camera controls for exploring the solar system from any angle
-- **Educational Information**: Click on any celestial body to view information about it
-- **Orbital Paths**: Visualized orbital paths for each planet
-- **Dynamic Lighting**: Realistic lighting effects emanating from the Sun
-- **Adjustable Speed**: Control the speed of planetary orbits and rotations
-- **Responsive Design**: Works on desktop and mobile devices
+- **Focused exploration**: Select a body in the rail or directly in the scene to focus the camera and inspect it
+- **NASA-informed facts**: Each card separates compressed display scale from physical data and cites its primary source
+- **Exploration commands**: Reset, pause/resume, and orbit-rate controls remain available at every viewport size
+- **Sharper rendering**: sRGB output, ACES filmic tone mapping, anisotropic texture filtering, and a high-performance renderer preference
+- **Responsive composition**: The body rail, information card, and controls reflow so mobile UI regions do not collide
 - **Fallback Textures**: Graceful degradation with color-based fallbacks if textures aren't available
 
 ## Getting Started
@@ -80,13 +79,12 @@ For the best experience, place the following texture files in the `assets/textur
 
 If any texture files are missing, the application will use colored fallbacks.
 
-## Controls
+## Exploration
 
-- **Left-click + drag**: Rotate the view
-- **Right-click + drag**: Pan the view
-- **Scroll**: Zoom in/out
-- **Click on object**: View information about the celestial body
-- **Speed slider**: Adjust the speed of orbital movements
+- Select the Sun, a planet, or the Moon from the body rail or directly in the scene.
+- Drag to orbit, scroll or pinch to zoom, and pan with the secondary pointer action.
+- Use `Reset` to return to the system view, `Pause` to stop motion, and the motion slider to set orbital rate.
+- Physical values and their source treatment are recorded in [SOURCE_NOTES.md](SOURCE_NOTES.md).
 
 ## Technical Details
 

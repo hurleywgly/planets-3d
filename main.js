@@ -1,681 +1,304 @@
-// Loading manager to track loading progress
 const loadingManager = new THREE.LoadingManager();
 const loadingScreen = document.getElementById('loading-screen');
 const loadingProgress = document.getElementById('loading-progress');
+const infoCard = document.getElementById('info-card');
+const bodyRailList = document.getElementById('body-rail-list');
+const speedSlider = document.getElementById('speed-slider');
+const speedValue = document.getElementById('speed-value');
+const pauseButton = document.getElementById('pause-orbits');
 
-loadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
-    const progress = (itemsLoaded / itemsTotal) * 100;
-    loadingProgress.style.width = progress + '%';
-};
-
-loadingManager.onLoad = function() {
-    // Hide loading screen with a fade effect
+loadingManager.onProgress = (_, loaded, total) => { loadingProgress.style.width = `${Math.round((loaded / total) * 100)}%`; };
+loadingManager.onLoad = () => {
+    loadingProgress.style.width = '100%';
     loadingScreen.style.opacity = '0';
-    loadingScreen.style.transition = 'opacity 1s ease';
-    setTimeout(() => {
-        loadingScreen.style.display = 'none';
-    }, 1000);
+    window.setTimeout(() => { loadingScreen.style.display = 'none'; }, 380);
 };
 
-// Scene setup
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+scene.background = new THREE.Color(0x01050b);
+const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.physicallyCorrectLights = true;
 document.body.appendChild(renderer.domElement);
 
-// Camera position
-camera.position.set(0, 50, 100);
+const HOME_POSITION = new THREE.Vector3(0, 34, 112);
+const HOME_TARGET = new THREE.Vector3(0, 0, 0);
+camera.position.copy(HOME_POSITION);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.maxDistance = 190;
+controls.minDistance = 7;
+controls.panSpeed = 0.7;
+controls.rotateSpeed = 0.65;
+controls.screenSpacePanning = true;
+controls.target.copy(HOME_TARGET);
+controls.zoomSpeed = 0.85;
 
-// Lighting
-const sunLight = new THREE.PointLight(0xffffff, 2, 300, 1);
-sunLight.position.set(0, 0, 0);
-scene.add(sunLight);
-
-const ambientLight = new THREE.AmbientLight(0x404040, 0.2);
-scene.add(ambientLight);
-
-// Add starfield background
 const textureLoader = new THREE.TextureLoader(loadingManager);
 textureLoader.setPath('assets/textures/');
-
-// Load starfield texture or create a procedural one if not available
-let stars;
-textureLoader.load(
-    'stars.jpg',
-    function(starTexture) {
-        const starGeometry = new THREE.SphereGeometry(500, 64, 64);
-        const starMaterial = new THREE.MeshBasicMaterial({ 
-            map: starTexture, 
-            side: THREE.BackSide 
-        });
-        stars = new THREE.Mesh(starGeometry, starMaterial);
-        scene.add(stars);
-    },
-    undefined,
-    function(err) {
-        console.log('Starfield texture not found, creating procedural stars');
-        // Create procedural stars as a fallback
-        stars = createProceduralStars();
-        scene.add(stars);
-    }
-);
-
-// Function to create procedural stars
-function createProceduralStars() {
-    const starsGeometry = new THREE.BufferGeometry();
-    const starCount = 10000;
-    const positions = new Float32Array(starCount * 3);
-    const colors = new Float32Array(starCount * 3);
-    
-    for (let i = 0; i < starCount; i++) {
-        const i3 = i * 3;
-        // Position stars in a sphere
-        const radius = 400 + Math.random() * 100;
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        
-        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-        positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-        positions[i3 + 2] = radius * Math.cos(phi);
-        
-        // Random star colors (mostly white with some blue/yellow tints)
-        const brightness = 0.7 + Math.random() * 0.3;
-        colors[i3] = brightness;
-        colors[i3 + 1] = brightness;
-        colors[i3 + 2] = brightness + (Math.random() > 0.8 ? -0.3 : 0.3) * Math.random();
-    }
-    
-    starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    starsGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    
-    const starsMaterial = new THREE.PointsMaterial({
-        size: 1.5,
-        sizeAttenuation: true,
-        vertexColors: true,
-        transparent: true,
-        opacity: 0.8
-    });
-    
-    return new THREE.Points(starsGeometry, starsMaterial);
+const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+function loadTexture(name, onError) {
+    return textureLoader.load(name, texture => {
+        texture.encoding = THREE.sRGBEncoding;
+        texture.anisotropy = Math.min(8, maxAnisotropy);
+    }, undefined, () => { if (onError) onError(); });
 }
 
-// Planet data (scaled sizes and distances for visualization)
-const earthOrbitalPeriod = 10; // Earth's orbit in seconds (scaled)
-const planets = [
-    { 
-        name: 'Mercury', 
-        radius: 0.5, 
-        distance: 10, 
-        orbitalPeriod: 88 / 365, 
-        texture: 'mercury.jpg', 
-        color: 0xE5E5E5, 
-        info: 'Smallest planet, closest to the Sun',
-        detailedInfo: 'Mercury is the smallest planet and closest to the Sun, with a rocky, cratered surface similar to our Moon. It has extreme temperatures, scorching hot by day and freezing at night, since it barely has an atmosphere. Fun fact: A day on Mercury lasts longer than its year!'
-    },
-    { 
-        name: 'Venus', 
-        radius: 1, 
-        distance: 15, 
-        orbitalPeriod: 225 / 365, 
-        texture: 'venus.jpg', 
-        atmosphereTexture: 'venus_atmosphere.jpg', 
-        color: 0xFFC649, 
-        info: 'Similar in size to Earth, known for extreme temperatures',
-        detailedInfo: 'Venus is Earth\'s super-hot twin, with thick clouds trapping heat, making it the hottest planet—hot enough to melt lead! Its surface is rocky, volcanic, and completely hidden by clouds of sulfuric acid. Fun fact: Venus rotates so slowly, its day is actually longer than its year.'
-    },
-    { 
-        name: 'Earth', 
-        radius: 1, 
-        distance: 20, 
-        orbitalPeriod: 1, 
-        texture: 'earth.jpg', 
-        cloudsTexture: 'earth_clouds.jpg', 
-        color: 0x6B93D6, 
-        info: 'Our home planet, the only known world with life',
-        detailedInfo: 'Earth is our vibrant home planet, the only one we know that supports life. Covered mostly by oceans, it has a breathable atmosphere of nitrogen and oxygen and is just the right distance from the Sun to sustain life. Fun fact: About 70% of Earth\'s surface is water!'
-    },
-    { 
-        name: 'Mars', 
-        radius: 0.7, 
-        distance: 25, 
-        orbitalPeriod: 687 / 365, 
-        texture: 'mars.jpg', 
-        color: 0xE27B58, 
-        info: 'The Red Planet, home to the largest volcano in the solar system',
-        detailedInfo: 'Mars, the Red Planet, is rocky, dusty, and cold, with iron-rich soil giving it its reddish glow. It features massive volcanoes, canyons, and polar ice caps. Fun fact: Mars has the tallest volcano in the solar system, Olympus Mons—three times taller than Mount Everest!'
-    },
-    { 
-        name: 'Jupiter', 
-        radius: 3, 
-        distance: 40, 
-        orbitalPeriod: 4332 / 365, 
-        texture: 'jupiter.jpg', 
-        color: 0xC88B3A, 
-        info: 'Largest planet, a gas giant with a Great Red Spot',
-        detailedInfo: 'Jupiter is the largest planet, a swirling giant made mostly of hydrogen and helium gas. It\'s famous for its Great Red Spot—a gigantic storm wider than Earth! Fun fact: Jupiter has at least 95 moons, the most in our solar system!'
-    },
-    { 
-        name: 'Saturn', 
-        radius: 2.5, 
-        distance: 60, 
-        orbitalPeriod: 10759 / 365, 
-        texture: 'saturn.jpg', 
-        ringsTexture: 'saturn_rings.jpg', 
-        color: 0xEAD6B8, 
-        info: 'Famous for its spectacular ring system',
-        detailedInfo: 'Saturn is an iconic gas giant known for its spectacular rings, made of countless icy particles and dust. It\'s mostly hydrogen and helium, incredibly windy, and extremely cold. Fun fact: Saturn is so light, it could float in water—if there were an ocean big enough!'
-    },
-    { 
-        name: 'Uranus', 
-        radius: 2, 
-        distance: 80, 
-        orbitalPeriod: 30687 / 365, 
-        texture: 'uranus.jpg', 
-        color: 0xB1E3E4, 
-        info: 'Ice giant that rotates on its side',
-        detailedInfo: 'Uranus is an ice giant with an atmosphere of hydrogen, helium, and methane—giving it a pale blue-green color. It rotates sideways, making it appear to roll along its orbit! Fun fact: Each season on Uranus lasts 21 years!'
-    },
-    { 
-        name: 'Neptune', 
-        radius: 2, 
-        distance: 100, 
-        orbitalPeriod: 60190 / 365, 
-        texture: 'neptune.jpg', 
-        color: 0x5B5DDF, 
-        info: 'Windiest planet with the strongest storms',
-        detailedInfo: 'Neptune, the farthest planet, is a cold, windy gas giant with deep-blue clouds and raging storms. Winds here are faster than anywhere else in our solar system, reaching over 1,200 mph! Fun fact: Neptune was discovered by mathematical prediction before it was observed with telescopes!'
-    }
+scene.add(new THREE.PointLight(0xfff1ce, 2100, 240, 2));
+scene.add(new THREE.AmbientLight(0x23324a, 0.28));
+const starField = new THREE.Mesh(
+    new THREE.SphereGeometry(450, 48, 48),
+    new THREE.MeshBasicMaterial({ map: loadTexture('stars.jpg'), side: THREE.BackSide })
+);
+scene.add(starField);
+
+const SUN = {
+    name: 'Sun', category: 'G-type main-sequence star', color: '#ffe071',
+    summary: 'The Sun is the star at the center of the Solar System. Its gravity holds the planets in orbit and its light powers conditions on Earth.',
+    facts: [['Type', 'G-type star'], ['Diameter', '1.39 million km'], ['Surface', 'About 5,500 C'], ['System mass', 'About 99.8%']],
+    factUrl: 'https://science.nasa.gov/sun/'
+};
+
+// Scene distances and radii are deliberately compressed. Fact-card values remain physical NASA data.
+const PLANETS = [
+    { name: 'Mercury', category: 'Terrestrial planet', sceneRadius: 0.56, sceneDistance: 11, orbitDays: 88.0, texture: 'mercury.jpg', color: '#c8b5a2', distance: '57.9 million km', diameter: '4,879 km', day: '4,222.6 h', temperature: '167 C', summary: 'The smallest planet and the closest to the Sun. Its cratered surface sits beneath an extremely thin exosphere.', factUrl: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/' },
+    { name: 'Venus', category: 'Terrestrial planet', sceneRadius: 0.94, sceneDistance: 16, orbitDays: 224.7, texture: 'venus.jpg', atmosphereTexture: 'venus_atmosphere.jpg', color: '#e6bc72', distance: '108.2 million km', diameter: '12,104 km', day: '2,802.0 h', temperature: '464 C', summary: 'A rocky world with a dense carbon-dioxide atmosphere. Its greenhouse effect makes Venus the hottest planet.', factUrl: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/' },
+    { name: 'Earth', category: 'Terrestrial planet', sceneRadius: 1.02, sceneDistance: 22, orbitDays: 365.2, texture: 'earth.jpg', cloudsTexture: 'earth_clouds.jpg', color: '#70b7ff', distance: '149.6 million km', diameter: '12,756 km', day: '24.0 h', temperature: '15 C', summary: 'Our ocean world is the third planet from the Sun and the only place known to host life.', factUrl: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/' },
+    { name: 'Mars', category: 'Terrestrial planet', sceneRadius: 0.75, sceneDistance: 28, orbitDays: 687.0, texture: 'mars.jpg', color: '#ec7651', distance: '228.0 million km', diameter: '6,792 km', day: '24.7 h', temperature: '-65 C', summary: 'The Red Planet has polar ice caps, giant volcanoes, and the largest canyon system in the Solar System.', factUrl: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/' },
+    { name: 'Jupiter', category: 'Gas giant', sceneRadius: 3.25, sceneDistance: 43, orbitDays: 4331, texture: 'jupiter.jpg', color: '#d8a46d', distance: '778.5 million km', diameter: '142,984 km', day: '9.9 h', temperature: '-110 C', summary: 'The largest planet is a gas giant with cloud bands and the Great Red Spot, a long-lived storm.', factUrl: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/' },
+    { name: 'Saturn', category: 'Gas giant', sceneRadius: 2.72, sceneDistance: 62, orbitDays: 10747, texture: 'saturn.jpg', ringsTexture: 'saturn_rings.jpg', color: '#ead6b8', distance: '1,432.0 million km', diameter: '120,536 km', day: '10.7 h', temperature: '-140 C', summary: 'Saturn is the second-largest planet. Its bright rings are made largely of water-ice particles.', factUrl: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/' },
+    { name: 'Uranus', category: 'Ice giant', sceneRadius: 2.08, sceneDistance: 82, orbitDays: 30589, texture: 'uranus.jpg', color: '#a7e8eb', distance: '2,867.0 million km', diameter: '51,118 km', day: '17.2 h', temperature: '-195 C', summary: 'An ice giant that rotates with an extreme tilt. Its methane-rich atmosphere gives it a blue-green appearance.', factUrl: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/' },
+    { name: 'Neptune', category: 'Ice giant', sceneRadius: 2.02, sceneDistance: 103, orbitDays: 59800, texture: 'neptune.jpg', color: '#5c8dff', distance: '4,515.0 million km', diameter: '49,528 km', day: '16.1 h', temperature: '-200 C', summary: 'The most distant planet is an ice giant with dark storms and the fastest winds measured in the Solar System.', factUrl: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/' }
 ];
+const MOON = {
+    name: 'Moon', category: 'Natural satellite', color: '#e9edf5',
+    summary: 'Earth\'s only natural satellite. It is locked so that the same hemisphere faces Earth as it orbits.',
+    facts: [['Orbits', 'Earth'], ['Diameter', '3,475 km'], ['Orbit', '27.3 days'], ['Day', '708.7 h']],
+    factUrl: 'https://science.nasa.gov/moon/'
+};
 
-// Create Sun
-const sunTexture = textureLoader.load('sun.jpg', undefined, undefined, function(err) {
-    console.log('Sun texture not found, using fallback');
-});
+function createOrbit(distance, color) {
+    const points = [];
+    for (let index = 0; index <= 192; index += 1) {
+        const angle = (index / 192) * Math.PI * 2;
+        points.push(new THREE.Vector3(Math.cos(angle) * distance, 0, Math.sin(angle) * distance));
+    }
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    scene.add(new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 })));
+}
 
-// Create a glow effect for the sun
-const sunGlowGeometry = new THREE.SphereGeometry(5.5, 64, 64);
-const sunGlowMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-        "c": { type: "f", value: 0.2 },
-        "p": { type: "f", value: 3.0 },
-        glowColor: { type: "c", value: new THREE.Color(0xffff00) },
-        viewVector: { type: "v3", value: camera.position }
-    },
-    vertexShader: `
-        uniform vec3 viewVector;
-        uniform float c;
-        uniform float p;
-        varying float intensity;
-        void main() {
-            vec3 vNormal = normalize(normal);
-            vec3 vNormel = normalize(viewVector);
-            intensity = pow(c - dot(vNormal, vNormel), p);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-    fragmentShader: `
-        uniform vec3 glowColor;
-        varying float intensity;
-        void main() {
-            vec3 glow = glowColor * intensity;
-            gl_FragColor = vec4(glow, 1.0);
-        }
-    `,
-    side: THREE.BackSide,
-    blending: THREE.AdditiveBlending,
-    transparent: true
-});
-
-const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
+const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffe071 });
+sunMaterial.map = loadTexture('sun.jpg', () => { sunMaterial.map = null; sunMaterial.needsUpdate = true; });
+const sun = new THREE.Mesh(new THREE.SphereGeometry(5.25, 64, 64), sunMaterial);
+sun.name = SUN.name;
+sun.userData.record = SUN;
+scene.add(sun);
+const sunGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(6.2, 48, 48),
+    new THREE.MeshBasicMaterial({ color: 0xffbd5e, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, side: THREE.BackSide })
+);
 scene.add(sunGlow);
 
-const sun = new THREE.Mesh(
-    new THREE.SphereGeometry(5, 64, 64),
-    new THREE.MeshBasicMaterial({ 
-        map: sunTexture || null,
-        color: sunTexture ? 0xffffff : 0xFDB813,
-        emissive: 0xFDB813,
-        emissiveIntensity: 0.6
-    })
-);
-sun.name = 'Sun';
-sun.userData = { 
-    info: 'The star at the center of our Solar System',
-    detailedInfo: 'The Sun is a gigantic ball of super-hot plasma, mainly hydrogen and helium, and it\'s the powerhouse of our solar system. Without its warmth and light, life on Earth couldn\'t exist. Fun fact: it contains 99.8% of all mass in the entire solar system!'
-};
-scene.add(sun);
-
-// Create orbital paths
-const orbitalPaths = [];
-planets.forEach(planet => {
-    const orbitGeometry = new THREE.RingGeometry(planet.distance - 0.1, planet.distance + 0.1, 128);
-    const orbitMaterial = new THREE.MeshBasicMaterial({ 
-        color: planet.color, 
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.3
-    });
-    const orbit = new THREE.Mesh(orbitGeometry, orbitMaterial);
-    orbit.rotation.x = Math.PI / 2;
-    scene.add(orbit);
-    orbitalPaths.push(orbit);
-});
-
-// Create planets
+const selectableMeshes = [sun];
+const bodiesByName = new Map([[SUN.name, sun]]);
 const planetMeshes = [];
-planets.forEach(planet => {
-    const texture = textureLoader.load(planet.texture, undefined, undefined, function(err) {
-        console.log(`${planet.name} texture not found, using fallback`);
-    });
-    
-    const geometry = new THREE.SphereGeometry(planet.radius, 64, 64);
-    const material = new THREE.MeshPhongMaterial({ 
-        map: texture || null,
-        color: texture ? 0xffffff : planet.color,
-        shininess: 5
-    });
-    
-    const mesh = new THREE.Mesh(geometry, material);
+PLANETS.forEach((planet, index) => {
+    createOrbit(planet.sceneDistance, planet.color);
+    const material = new THREE.MeshStandardMaterial({ color: new THREE.Color(planet.color), metalness: 0, roughness: 0.9 });
+    material.map = loadTexture(planet.texture, () => { material.map = null; material.needsUpdate = true; });
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(planet.sceneRadius, 64, 64), material);
     mesh.name = planet.name;
-    mesh.userData = { 
-        info: planet.info,
-        detailedInfo: planet.detailedInfo,
-        distance: planet.distance,
-        orbitalPeriod: planet.orbitalPeriod
-    };
-    
+    mesh.userData = { record: planet, orbitOffset: index * 0.74, spinRate: 0.25 + index * 0.025 };
     scene.add(mesh);
-    planetMeshes.push({
-        mesh,
-        distance: planet.distance,
-        orbitalPeriod: earthOrbitalPeriod * planet.orbitalPeriod
-    });
-
-    // Add atmosphere/clouds for planets that have them
+    selectableMeshes.push(mesh);
+    bodiesByName.set(planet.name, mesh);
+    planetMeshes.push(mesh);
     if (planet.cloudsTexture) {
-        const cloudsTexture = textureLoader.load(planet.cloudsTexture);
-        const cloudsGeometry = new THREE.SphereGeometry(planet.radius + 0.03, 64, 64);
-        const cloudsMaterial = new THREE.MeshPhongMaterial({
-            map: cloudsTexture,
-            transparent: true,
-            opacity: 0.8
-        });
-        const clouds = new THREE.Mesh(cloudsGeometry, cloudsMaterial);
+        const cloudMaterial = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.58, depthWrite: false, roughness: 1 });
+        cloudMaterial.map = loadTexture(planet.cloudsTexture, () => { cloudMaterial.map = null; cloudMaterial.needsUpdate = true; });
+        const clouds = new THREE.Mesh(new THREE.SphereGeometry(planet.sceneRadius + 0.036, 64, 64), cloudMaterial);
         mesh.add(clouds);
-        
-        // Store clouds for animation
         mesh.userData.clouds = clouds;
     }
-    
-    // Special case for Venus atmosphere
     if (planet.atmosphereTexture) {
-        const atmosphereTexture = textureLoader.load(planet.atmosphereTexture);
-        const atmosphereGeometry = new THREE.SphereGeometry(planet.radius + 0.05, 64, 64);
-        const atmosphereMaterial = new THREE.MeshPhongMaterial({
-            map: atmosphereTexture,
-            transparent: true,
-            opacity: 0.8
-        });
-        const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+        const atmosphereMaterial = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.24, depthWrite: false, roughness: 1 });
+        atmosphereMaterial.map = loadTexture(planet.atmosphereTexture, () => { atmosphereMaterial.map = null; atmosphereMaterial.needsUpdate = true; });
+        const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(planet.sceneRadius + 0.06, 64, 64), atmosphereMaterial);
         mesh.add(atmosphere);
-        
-        // Store atmosphere for animation
         mesh.userData.atmosphere = atmosphere;
     }
-
-    // Special case for Saturn's rings
-    if (planet.name === 'Saturn') {
-        const ringTexture = textureLoader.load(planet.ringsTexture, undefined, undefined, function(err) {
-            console.log('Saturn rings texture not found, using fallback');
-        });
-        
-        const ringGeometry = new THREE.RingGeometry(3.5, 5.5, 64);
-        
-        // Add UV mapping for the ring texture
-        const pos = ringGeometry.attributes.position;
-        const v3 = new THREE.Vector3();
-        const uv = [];
-        
-        for (let i = 0; i < pos.count; i++) {
-            v3.fromBufferAttribute(pos, i);
-            uv.push(
-                (v3.x / 5.5 + 1) / 2,
-                (v3.y / 5.5 + 1) / 2
-            );
-        }
-        
-        ringGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-        
-        const ringMaterial = new THREE.MeshBasicMaterial({ 
-            map: ringTexture || null,
-            color: ringTexture ? 0xffffff : 0xCDAA7D,
-            side: THREE.DoubleSide,
-            transparent: true,
-            opacity: 0.9
-        });
-        
-        const rings = new THREE.Mesh(ringGeometry, ringMaterial);
-        rings.rotation.x = Math.PI / 2;
+    if (planet.ringsTexture) {
+        const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.86 });
+        ringMaterial.map = loadTexture(planet.ringsTexture, () => { ringMaterial.map = null; ringMaterial.color.set(0xd5b782); ringMaterial.needsUpdate = true; });
+        const rings = new THREE.Mesh(new THREE.RingGeometry(planet.sceneRadius * 1.4, planet.sceneRadius * 2.24, 96), ringMaterial);
+        rings.rotation.x = Math.PI / 2.45;
         mesh.add(rings);
     }
 });
 
-// Add Earth's Moon
-const moonTexture = textureLoader.load('moon.jpg', undefined, undefined, function(err) {
-    console.log('Moon texture not found, using fallback');
-});
-const moon = new THREE.Mesh(
-    new THREE.SphereGeometry(0.27, 32, 32),
-    new THREE.MeshPhongMaterial({ 
-        map: moonTexture || null,
-        color: moonTexture ? 0xffffff : 0xDDDDDD
-    })
-);
-moon.name = 'Moon';
-moon.userData = { 
-    info: 'Earth\'s only natural satellite',
-    detailedInfo: 'The Moon is Earth\'s only natural satellite, a rocky, cratered world with no atmosphere. Its gravitational pull causes Earth\'s tides, and it always shows the same face to Earth because it rotates at the same rate it orbits. Fun fact: The Moon is slowly moving away from Earth at about 3.8 cm per year!'
-};
-const earthMesh = planetMeshes.find(p => p.mesh.name === 'Earth').mesh;
+const earthMesh = bodiesByName.get('Earth');
+const moonMaterial = new THREE.MeshStandardMaterial({ color: 0xe9edf5, roughness: 1 });
+moonMaterial.map = loadTexture('moon.jpg', () => { moonMaterial.map = null; moonMaterial.needsUpdate = true; });
+const moon = new THREE.Mesh(new THREE.SphereGeometry(0.28, 40, 40), moonMaterial);
+moon.name = MOON.name;
+moon.userData.record = MOON;
 earthMesh.add(moon);
+selectableMeshes.push(moon);
+bodiesByName.set(MOON.name, moon);
 
-// Create a simple info panel
-const infoPanel = document.createElement('div');
-infoPanel.style.position = 'absolute';
-infoPanel.style.bottom = '20px';
-infoPanel.style.left = '20px';
-infoPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
-infoPanel.style.color = 'white';
-infoPanel.style.padding = '20px';
-infoPanel.style.borderRadius = '10px';
-infoPanel.style.fontFamily = 'Arial, sans-serif';
-infoPanel.style.maxWidth = '350px';
-infoPanel.style.maxHeight = '70vh';
-infoPanel.style.overflowY = 'auto';
-infoPanel.style.display = 'none';
-infoPanel.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.5)';
-infoPanel.style.lineHeight = '1.5';
-infoPanel.style.fontSize = '14px';
-infoPanel.style.zIndex = '100'; // Ensure it's above other elements
-document.body.appendChild(infoPanel);
-
-// Make info panel responsive for mobile
-function updateInfoPanelForScreenSize() {
-    if (window.innerWidth < 768) { // Mobile breakpoint
-        infoPanel.style.left = '10px';
-        infoPanel.style.right = '10px';
-        infoPanel.style.bottom = '10px';
-        infoPanel.style.maxWidth = 'calc(100% - 20px)';
-        infoPanel.style.fontSize = '16px';
-        infoPanel.style.padding = '20px';
-        infoPanel.style.maxHeight = '80vh';
-        infoPanel.style.lineHeight = '1.6';
-    } else {
-        infoPanel.style.left = '20px';
-        infoPanel.style.right = 'auto';
-        infoPanel.style.bottom = '20px';
-        infoPanel.style.maxWidth = '350px';
-        infoPanel.style.fontSize = '14px';
-        infoPanel.style.padding = '20px';
-        infoPanel.style.maxHeight = '70vh';
-        infoPanel.style.lineHeight = '1.5';
-    }
+function renderRail() {
+    [SUN, ...PLANETS, MOON].forEach(record => {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.className = 'body-button';
+        button.type = 'button';
+        button.dataset.body = record.name;
+        button.innerHTML = `<span class="body-dot" style="--body-color: ${record.color}"></span><span>${record.name}</span>`;
+        button.addEventListener('click', () => focusBody(bodiesByName.get(record.name)));
+        item.appendChild(button);
+        bodyRailList.appendChild(item);
+    });
 }
 
-// Call initially and on window resize
-updateInfoPanelForScreenSize();
-window.addEventListener('resize', updateInfoPanelForScreenSize);
+function factsFor(record) {
+    if (record.facts) return record.facts;
+    return [['Solar distance', record.distance], ['Diameter', record.diameter], ['Year', `${record.orbitDays.toLocaleString()} days`], ['Day', record.day], ['Mean temp.', record.temperature], ['Class', record.category]];
+}
+function renderInfo(record) {
+    const facts = factsFor(record).map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
+    const sourceLink = record.factUrl ? `<a href="${record.factUrl}" target="_blank" rel="noreferrer">NASA source</a>` : '<a href="SOURCE_NOTES.md" target="_blank">Source notes</a>';
+    infoCard.innerHTML = `<p class="eyebrow">Selected body</p><div class="card-heading"><h2>${record.name}</h2><span class="body-type">${record.category}</span></div><p class="summary">${record.summary}</p><dl class="fact-grid">${facts}</dl><p class="source-note">Physical values: ${sourceLink}. The 3D display uses a compressed, non-linear scale for exploration.</p>`;
+}
+function setActiveBody(name) {
+    bodyRailList.querySelectorAll('.body-button').forEach(button => { button.setAttribute('aria-current', String(button.dataset.body === name)); });
+}
 
-// Create a title panel
-const titlePanel = document.createElement('div');
-titlePanel.style.position = 'absolute';
-titlePanel.style.top = '20px';
-titlePanel.style.left = '20px';
-titlePanel.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-titlePanel.style.color = 'white';
-titlePanel.style.padding = '10px';
-titlePanel.style.borderRadius = '5px';
-titlePanel.style.fontFamily = 'Arial, sans-serif';
-titlePanel.innerHTML = '<h2 style="margin: 0;">Interactive Solar System</h2>' +
-                       '<p style="margin: 5px 0 0 0;">Click on planets for info. Scroll to zoom.</p>';
-document.body.appendChild(titlePanel);
+function focusTargetFor(body) {
+    const target = new THREE.Vector3();
+    body.getWorldPosition(target);
+    if (window.innerWidth <= 640) target.y -= 1.25;
+    return target;
+}
 
-// Create a speed control slider
-const speedControl = document.createElement('div');
-speedControl.style.position = 'absolute';
-speedControl.style.top = '20px';
-speedControl.style.right = '20px';
-speedControl.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-speedControl.style.color = 'white';
-speedControl.style.padding = '10px';
-speedControl.style.borderRadius = '5px';
-speedControl.style.fontFamily = 'Arial, sans-serif';
-speedControl.innerHTML = '<label for="speed-slider">Orbital Speed: </label>' +
-                         '<input type="range" id="speed-slider" min="0.1" max="5" step="0.1" value="1" style="width: 100px;">';
-document.body.appendChild(speedControl);
-
-// Speed factor for animations
-let speedFactor = 1;
-document.getElementById('speed-slider').addEventListener('input', function(e) {
-    speedFactor = parseFloat(e.target.value);
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let pointerStart = null;
+function selectableAncestor(object) {
+    let candidate = object;
+    while (candidate) {
+        if (candidate.userData && candidate.userData.record) return candidate;
+        candidate = candidate.parent;
+    }
+    return null;
+}
+renderer.domElement.addEventListener('pointerdown', event => { pointerStart = { x: event.clientX, y: event.clientY }; });
+renderer.domElement.addEventListener('pointerup', event => {
+    if (!pointerStart || Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 7) return;
+    const bounds = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+    pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(selectableMeshes, true)[0];
+    const body = hit && selectableAncestor(hit.object);
+    if (body) focusBody(body);
 });
 
-// OrbitControls for interactivity
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.minDistance = 10;
-controls.maxDistance = 300;
-controls.rotateSpeed = 0.8; // Adjust rotation speed
-controls.zoomSpeed = 1.2;   // Adjust zoom speed
-controls.panSpeed = 0.8;    // Adjust pan speed
-controls.screenSpacePanning = true; // More intuitive panning
-controls.enableTouch = true; // Ensure touch is enabled
-
-// Adjust controls based on device
-function updateControlsForDevice() {
-    if (window.innerWidth < 768) { // Mobile
-        controls.rotateSpeed = 0.6; // Slower rotation for more precision on small screens
-        controls.zoomSpeed = 0.8;   // Slower zoom for more control
-    } else {
-        controls.rotateSpeed = 0.8;
-        controls.zoomSpeed = 1.2;
+let activeBody = sun;
+let isPaused = false;
+let orbitalRate = Number(speedSlider.value);
+let transition = null;
+let elapsedSeconds = 0;
+const clock = new THREE.Clock();
+function focusBody(body) {
+    if (!body) return;
+    activeBody = body;
+    const record = body.userData.record;
+    const position = focusTargetFor(body);
+    const scale = body.geometry && body.geometry.parameters ? body.geometry.parameters.radius : 1;
+    const distance = body === sun ? 17 : Math.max(5.7, Math.min(24, scale * 5.8 + 3.5));
+    const direction = camera.position.clone().sub(controls.target).normalize();
+    transition = { elapsed: 0, fromPosition: camera.position.clone(), fromTarget: controls.target.clone(), toPosition: position.clone().add(direction.multiplyScalar(distance)), toTarget: position.clone() };
+    renderInfo(record);
+    setActiveBody(record.name);
+}
+function resetView() {
+    activeBody = null;
+    transition = { elapsed: 0, fromPosition: camera.position.clone(), fromTarget: controls.target.clone(), toPosition: HOME_POSITION.clone(), toTarget: HOME_TARGET.clone() };
+    renderInfo(SUN);
+    setActiveBody('Sun');
+}
+function updateSpeed() {
+    orbitalRate = Number(speedSlider.value);
+    speedValue.value = `${orbitalRate.toFixed(2)}x`;
+    speedValue.textContent = speedValue.value;
+}
+speedSlider.addEventListener('input', updateSpeed);
+pauseButton.addEventListener('click', () => {
+    isPaused = !isPaused;
+    pauseButton.textContent = isPaused ? 'Resume' : 'Pause';
+    pauseButton.setAttribute('aria-pressed', String(isPaused));
+    pauseButton.title = isPaused ? 'Resume planetary motion' : 'Pause planetary motion';
+});
+document.getElementById('home-view').addEventListener('click', resetView);
+function updateTransition(delta) {
+    if (!transition) return;
+    transition.elapsed = Math.min(1, transition.elapsed + delta / 0.9);
+    const eased = 1 - Math.pow(1 - transition.elapsed, 3);
+    camera.position.lerpVectors(transition.fromPosition, transition.toPosition, eased);
+    controls.target.lerpVectors(transition.fromTarget, transition.toTarget, eased);
+    if (transition.elapsed === 1) transition = null;
+}
+function updateBodies(delta) {
+    if (!isPaused) elapsedSeconds += delta * orbitalRate;
+    planetMeshes.forEach(mesh => {
+        const record = mesh.userData.record;
+        const cycleSeconds = 7.5 + (record.orbitDays / 59800) * 90;
+        const angle = elapsedSeconds / cycleSeconds * Math.PI * 2 + mesh.userData.orbitOffset;
+        mesh.position.set(Math.cos(angle) * record.sceneDistance, 0, Math.sin(angle) * record.sceneDistance);
+        mesh.rotation.y += delta * mesh.userData.spinRate * Math.max(orbitalRate, 0.15);
+        if (mesh.userData.clouds) mesh.userData.clouds.rotation.y += delta * 0.14 * Math.max(orbitalRate, 0.15);
+        if (mesh.userData.atmosphere) mesh.userData.atmosphere.rotation.y += delta * 0.06 * Math.max(orbitalRate, 0.15);
+    });
+    const moonAngle = elapsedSeconds * 1.8;
+    moon.position.set(Math.cos(moonAngle) * 2.05, 0.13, Math.sin(moonAngle) * 2.05);
+    moon.rotation.y += delta * 0.3;
+    sun.rotation.y += delta * 0.055;
+    sunGlow.scale.setScalar(1 + Math.sin(elapsedSeconds * 1.8) * 0.025);
+    if (activeBody && !transition) {
+        const trackedPosition = focusTargetFor(activeBody);
+        const offset = camera.position.clone().sub(controls.target);
+        // Keep the selected body centered even while its orbit is moving.
+        controls.target.copy(trackedPosition);
+        camera.position.copy(controls.target).add(offset);
     }
 }
-
-// Call initially and on resize
-updateControlsForDevice();
-window.addEventListener('resize', updateControlsForDevice);
-
-// Raycaster for clicking
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-
-// Handle both mouse clicks and touch events
-function handleInteraction(event) {
-    // Prevent default behavior for touch events
-    if (event.preventDefault) {
-        event.preventDefault();
-    }
-    
-    // Get the position from either mouse click or touch
-    const position = event.touches ? event.touches[0] : event;
-    
-    // Calculate normalized device coordinates
-    mouse.x = (position.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(position.clientY / window.innerHeight) * 2 + 1;
-    
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(scene.children, true);
-    
-    if (intersects.length > 0) {
-        const selectedObject = intersects[0].object;
-        
-        // Find the parent if it's a child object (like the moon)
-        const targetObject = selectedObject.parent && selectedObject.parent.name ? 
-                            selectedObject.parent : selectedObject;
-        
-        if (targetObject.name) {
-            // Display info panel with detailed information
-            infoPanel.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h2 style="margin: 0; color: #3498db; font-size: ${window.innerWidth < 768 ? '24px' : '20px'};">${targetObject.name}</h2>
-                    <button id="closeInfoPanel" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer; padding: 0 5px;">×</button>
-                </div>
-            `;
-            
-            // Use detailed info if available
-            if (targetObject.userData && targetObject.userData.detailedInfo) {
-                // Replace newlines with HTML line breaks
-                const formattedInfo = targetObject.userData.detailedInfo.replace(/\n/g, '<br>');
-                infoPanel.innerHTML += `<p style="margin-bottom: 15px;">${formattedInfo}</p>`;
-            } else if (targetObject.userData && targetObject.userData.info) {
-                infoPanel.innerHTML += `<p style="margin-bottom: 15px;">${targetObject.userData.info}</p>`;
-            }
-            
-            // Add more detailed information for planets
-            if (targetObject.name !== 'Sun' && targetObject.name !== 'Moon') {
-                const planetData = planets.find(p => p.name === targetObject.name);
-                if (planetData) {
-                    infoPanel.innerHTML += `
-                        <div style="background-color: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-top: 15px;">
-                            <p style="font-size: ${window.innerWidth < 768 ? '18px' : '14px'}; margin: 8px 0;"><strong>Distance from Sun:</strong> ${planetData.distance} AU</p>
-                            <p style="font-size: ${window.innerWidth < 768 ? '18px' : '14px'}; margin: 8px 0 0 0;"><strong>Orbital Period:</strong> ${(planetData.orbitalPeriod * 365).toFixed(1)} Earth days</p>
-                        </div>
-                    `;
-                }
-            }
-            
-            infoPanel.style.display = 'block';
-            
-            // Animate camera to focus on the selected object
-            const targetPosition = new THREE.Vector3();
-            targetObject.getWorldPosition(targetPosition);
-            
-            // Calculate appropriate camera distance based on object size
-            const objectSize = targetObject.name === 'Sun' ? 15 : 
-                              (targetObject.geometry.parameters.radius * 10 + 10);
-            
-            // Set target for camera animation
-            cameraTargetObject = targetObject;
-            cameraTargetPosition = targetPosition;
-            cameraTargetDistance = objectSize;
-            isAnimatingCamera = true;
-
-            // Add event listener to close button
-            setTimeout(() => {
-                const closeButton = document.getElementById('closeInfoPanel');
-                if (closeButton) {
-                    closeButton.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        infoPanel.style.display = 'none';
-                    });
-                }
-            }, 0);
-        }
-    } else {
-        // Hide info panel when clicking empty space
-        infoPanel.style.display = 'none';
-        
-        // Reset camera animation
-        isAnimatingCamera = false;
-    }
-}
-
-// Add event listeners for both mouse and touch
-window.addEventListener('click', handleInteraction);
-window.addEventListener('touchstart', handleInteraction);
-
-// Camera animation variables
-let isAnimatingCamera = false;
-let cameraTargetObject = null;
-let cameraTargetPosition = new THREE.Vector3();
-let cameraTargetDistance = 50;
-const cameraAnimationDuration = 1.5; // seconds
-let cameraAnimationProgress = 0;
-
-// Handle window resizing
-window.addEventListener('resize', () => {
+function updateForViewport() {
+    const isMobile = window.innerWidth <= 640;
+    controls.rotateSpeed = isMobile ? 0.5 : 0.65;
+    controls.zoomSpeed = isMobile ? 0.62 : 0.85;
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit to 2x for performance
-});
-
-// Animation loop
-let startTime = Date.now();
+}
+window.addEventListener('resize', updateForViewport);
 function animate() {
     requestAnimationFrame(animate);
-    const elapsed = (Date.now() - startTime) / 1000 * speedFactor; // seconds adjusted by speed factor
-
-    // Update planet orbits
-    planetMeshes.forEach(planet => {
-        const angle = (elapsed / planet.orbitalPeriod) * 2 * Math.PI;
-        planet.mesh.position.x = planet.distance * Math.cos(angle);
-        planet.mesh.position.z = planet.distance * Math.sin(angle);
-        planet.mesh.rotation.y += 0.01 * speedFactor; // Self-rotation adjusted by speed
-        
-        // Animate clouds if present
-        if (planet.mesh.userData.clouds) {
-            planet.mesh.userData.clouds.rotation.y += 0.015 * speedFactor; // Clouds rotate faster
-        }
-        
-        // Animate atmosphere if present
-        if (planet.mesh.userData.atmosphere) {
-            planet.mesh.userData.atmosphere.rotation.y += 0.005 * speedFactor; // Atmosphere rotates slower
-        }
-    });
-
-    // Update Moon's orbit around Earth
-    const moonOrbitalPeriod = 2; // 2 seconds for Moon's orbit
-    const moonAngle = (elapsed / moonOrbitalPeriod) * 2 * Math.PI;
-    moon.position.set(2 * Math.cos(moonAngle), 0, 2 * Math.sin(moonAngle));
-    moon.rotation.y += 0.005 * speedFactor; // Moon's self-rotation
-
-    // Sun's self-rotation
-    sun.rotation.y += 0.002 * speedFactor;
-    
-    // Update sun glow effect
-    sunGlowMaterial.uniforms.viewVector.value = new THREE.Vector3().subVectors(
-        camera.position,
-        sun.position
-    );
-
-    // Handle camera animation
-    if (isAnimatingCamera && cameraTargetObject) {
-        cameraAnimationProgress += 1 / (60 * cameraAnimationDuration); // 60fps
-        
-        if (cameraAnimationProgress >= 1) {
-            isAnimatingCamera = false;
-            cameraAnimationProgress = 0;
-        } else {
-            // Update target position in case the object is moving
-            cameraTargetObject.getWorldPosition(cameraTargetPosition);
-            
-            // Calculate new camera position
-            const currentPosition = new THREE.Vector3();
-            camera.getWorldPosition(currentPosition);
-            
-            // Direction from target to camera
-            const direction = new THREE.Vector3().subVectors(currentPosition, cameraTargetPosition).normalize();
-            
-            // New position at the desired distance
-            const newPosition = new THREE.Vector3().addVectors(
-                cameraTargetPosition,
-                direction.multiplyScalar(cameraTargetDistance)
-            );
-            
-            // Smoothly interpolate camera position
-            camera.position.lerp(newPosition, 0.05);
-            
-            // Look at the target
-            controls.target.copy(cameraTargetPosition);
-        }
-    }
-
+    const delta = Math.min(clock.getDelta(), 0.05);
+    updateBodies(delta);
+    updateTransition(delta);
     controls.update();
     renderer.render(scene, camera);
 }
+renderRail();
+renderInfo(SUN);
+setActiveBody('Sun');
+updateSpeed();
+updateForViewport();
 animate();
